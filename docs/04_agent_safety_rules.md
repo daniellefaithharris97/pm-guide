@@ -1,7 +1,43 @@
 # Agent Safety Rules & Implementation Guide
 
 ## Overview
-This document outlines comprehensive safety rules for AI agents in healthcare environments, with specific focus on HIPAA compliance and production-ready security implementations.
+This document outlines comprehensive safety rules for AI agents with feature-specific privacy standards. The level of security and compliance requirements vary based on the type of data and feature being built, ensuring appropriate protection without over-engineering.
+
+## Feature-Specific Privacy Standards
+
+### **Healthcare Features (PHI-Handling)**
+- **Data Types**: Patient records, medical information, health conditions, treatment data
+- **Privacy Level**: Very High (PHI - Protected Health Information)
+- **Compliance Requirements**: HIPAA, HITECH Act
+- **Security Standards**: 
+  - PHI masking/encryption required
+  - Strict audit logging (no PHI in logs)
+  - Role-based access controls
+  - Data minimization
+  - Secure data transmission
+- **Examples**: Patient triage, medical coding, health analysis, clinical decision support
+
+### **Sales & Marketing Features (Business Data)**
+- **Data Types**: Company contacts, business emails, sales leads, marketing data
+- **Privacy Level**: Medium (Business contact information)
+- **Compliance Requirements**: GDPR, CCPA, CAN-SPAM
+- **Security Standards**:
+  - Basic data encryption
+  - Standard access controls
+  - Business data audit logging
+  - Consent management (GDPR)
+- **Examples**: Lead assignment, sales automation, marketing campaigns, CRM integration
+
+### **Operations Features (Internal Data)**
+- **Data Types**: Employee information, internal processes, system data, operational metrics
+- **Privacy Level**: Low-Medium (Internal business data)
+- **Compliance Requirements**: Company privacy policy, basic data protection
+- **Security Standards**:
+  - Standard encryption
+  - Basic access controls
+  - Operational audit logging
+  - Internal data handling policies
+- **Examples**: HR automation, process optimization, internal tools, system monitoring
 
 ---
 
@@ -27,11 +63,75 @@ This document outlines comprehensive safety rules for AI agents in healthcare en
 
 ---
 
+## Context-Aware Safety Implementation
+
+### **Feature Detection and Configuration**
+```python
+# Feature-specific safety configuration
+SAFETY_CONFIGS = {
+    "healthcare": {
+        "phi_masking": True,
+        "audit_level": "high",
+        "access_controls": "strict",
+        "compliance": "HIPAA",
+        "data_retention": "7_years",
+        "encryption": "AES-256"
+    },
+    "sales": {
+        "phi_masking": False,
+        "audit_level": "medium", 
+        "access_controls": "standard",
+        "compliance": "GDPR/CCPA",
+        "data_retention": "3_years",
+        "encryption": "AES-128"
+    },
+    "operations": {
+        "phi_masking": False,
+        "audit_level": "basic",
+        "access_controls": "standard", 
+        "compliance": "Company_Policy",
+        "data_retention": "1_year",
+        "encryption": "AES-128"
+    }
+}
+
+def get_safety_config(feature_type, data_sensitivity=None):
+    """Get appropriate safety configuration for feature type"""
+    base_config = SAFETY_CONFIGS.get(feature_type, SAFETY_CONFIGS["operations"])
+    
+    # Adjust based on data sensitivity if provided
+    if data_sensitivity == "high" and feature_type != "healthcare":
+        base_config["audit_level"] = "high"
+        base_config["access_controls"] = "strict"
+    
+    return base_config
+```
+
+### **Agent Safety Implementation**
+```python
+class ContextAwareAgent:
+    def __init__(self, feature_type, data_sensitivity="medium"):
+        self.config = get_safety_config(feature_type, data_sensitivity)
+        self.safety_controls = self._setup_safety_controls()
+    
+    def _setup_safety_controls(self):
+        if self.config["phi_masking"]:
+            return HIPAACompliantControls(self.config)
+        elif self.config["compliance"] in ["GDPR", "CCPA"]:
+            return BusinessDataControls(self.config)
+        else:
+            return StandardControls(self.config)
+    
+    def process_data(self, data):
+        # Apply appropriate safety controls based on feature type
+        return self.safety_controls.process(data)
+```
+
 ## Multi-Layer Security Architecture
 
 ### **Layer 1: Infrastructure Security**
 ```yaml
-# Network-level protection
+# Network-level protection (varies by feature type)
 - TLS encryption for all communications
 - VPC isolation for sensitive components
 - Database encryption at rest
@@ -57,20 +157,51 @@ def authorize_action(user_id, action, resource):
 
 ### **Layer 3: Agent-Level Controls**
 ```python
-# Tool restrictions and validation
-ALLOWED_TOOLS = [
-    "search_patient_records",    # Returns masked data only
-    "calculate_coverage",        # No PHI in output
-    "schedule_appointment",      # Validates permissions
-    "generate_report"            # Sanitized output only
-]
+# Feature-specific tool restrictions and validation
+def get_allowed_tools(feature_type):
+    """Get appropriate tools based on feature type"""
+    if feature_type == "healthcare":
+        return [
+            "search_patient_records",    # Returns masked data only
+            "calculate_coverage",        # No PHI in output
+            "schedule_appointment",      # Validates permissions
+            "generate_report"            # Sanitized output only
+        ]
+    elif feature_type == "sales":
+        return [
+            "search_leads",              # Business contact data
+            "update_crm",                # CRM operations
+            "send_email",                # Marketing communications
+            "generate_sales_report"      # Business analytics
+        ]
+    else:  # operations
+        return [
+            "process_hr_data",           # Internal HR operations
+            "optimize_workflow",         # Process improvement
+            "generate_metrics",            # Internal analytics
+            "system_monitoring"          # Operational monitoring
+        ]
 
-BLOCKED_TOOLS = [
-    "raw_database_query",        # Too dangerous
-    "export_patient_data",       # PHI exposure risk
-    "admin_functions",           # Privilege escalation
-    "file_system_access"         # Data exfiltration risk
-]
+def get_blocked_tools(feature_type):
+    """Get blocked tools based on feature type"""
+    base_blocked = [
+        "raw_database_query",        # Too dangerous
+        "admin_functions",           # Privilege escalation
+        "file_system_access"         # Data exfiltration risk
+    ]
+    
+    if feature_type == "healthcare":
+        base_blocked.extend([
+            "export_patient_data",       # PHI exposure risk
+            "unmask_phi_data"           # PHI protection
+        ])
+    elif feature_type == "sales":
+        base_blocked.extend([
+            "export_contact_data",       # GDPR/CCPA risk
+            "bulk_email_send"           # Spam prevention
+        ])
+    
+    return base_blocked
 ```
 
 ### **Layer 4: Monitoring & Response**
@@ -99,7 +230,30 @@ class AgentMonitor:
 
 ---
 
-## HIPAA-Specific Safety Rules
+## Implementation Guidelines by Feature Type
+
+### **When Building Healthcare Features**
+- **Always assume PHI is present**
+- Implement PHI masking from day one
+- Use healthcare-specific audit logging
+- Follow HIPAA compliance requirements
+- Test with synthetic data only in development
+
+### **When Building Sales Features**
+- **Focus on business data protection**
+- Implement GDPR/CCPA compliance if handling EU/CA data
+- Use standard encryption and access controls
+- Log business decisions without personal data
+- Test with anonymized business data
+
+### **When Building Operations Features**
+- **Use company privacy standards**
+- Implement basic security controls
+- Focus on operational efficiency
+- Log system actions and decisions
+- Test with internal data (following company policies)
+
+## HIPAA-Specific Safety Rules (Healthcare Features Only)
 
 ### **PHI Protection Requirements**
 - [ ] **Data Minimization**: Only collect PHI that's absolutely necessary
@@ -443,11 +597,33 @@ class AuditTrail:
 
 ## Best Practices Summary
 
+### **Healthcare Features**
+- **Security First**: Implement strict controls from day one
+- **PHI Protection**: Mask/encrypt all personal health information
+- **Audit Everything**: Log all actions without exposing PHI
+- **Test Safely**: Use synthetic data only in development
+- **Compliance Ready**: Meet HIPAA requirements
+
+### **Sales Features**
+- **Business Focus**: Protect business contact information appropriately
+- **Consent Management**: Handle GDPR/CCPA requirements
+- **Standard Security**: Use proven business data protection
+- **Efficient Logging**: Log decisions without over-engineering
+- **Cost Effective**: Don't over-engineer for non-PHI data
+
+### **Operations Features**
+- **Company Standards**: Follow internal privacy policies
+- **Efficiency Focus**: Balance security with operational needs
+- **Basic Controls**: Implement standard business security
+- **Internal Logging**: Track system actions appropriately
+- **Pragmatic Approach**: Right-sized security for internal tools
+
+### **Universal Best Practices**
 1. **Never trust prompts alone** - implement security in code
 2. **Use multi-layer defense** - infrastructure, application, agent, monitoring
 3. **Restrict agent tools** - only pre-approved, safe functions
 4. **Monitor everything** - real-time detection and response
-5. **Audit without PHI** - log metadata, never actual patient data
+5. **Audit appropriately** - log metadata, never sensitive data
 6. **Plan for incidents** - have response procedures ready
 7. **Regular testing** - security drills and penetration testing
 8. **Continuous improvement** - update security measures based on threats
